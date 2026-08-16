@@ -164,8 +164,8 @@
 		     only visible in detail mode. -->
 		<p
 			class="chart-card__legend-note"
-			class:chart-card__legend-note--hidden={mode === 'overview'}
-			aria-hidden={mode === 'overview'}
+			class:chart-card__legend-note--hidden={mode !== 'detail'}
+			aria-hidden={mode !== 'detail'}
 		>
 			Members in multiple chapters are counted in each band but only once in the daily total (shown
 			as the dark marker on each bar).
@@ -263,7 +263,7 @@
 		padding: 0.5rem 0.75rem;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
-		background: var(--color-surface-subtle, rgba(18, 28, 80, 0.02));
+		background: rgba(18, 28, 80, 0.02);
 	}
 	.chart-card__toggle-btn:hover:not(.active) {
 		background: var(--color-border-subtle);

@@ -1,8 +1,17 @@
-<script lang="ts">
+<script module lang="ts">
+	import type { FeatureCollection } from 'geojson';
 	import michiganCountiesGeojsonRaw from '../../data/michigan-counties.geojson?raw';
-	import type { CountySummary } from './chart-data.js';
 
-	const michiganCountiesGeojson = JSON.parse(michiganCountiesGeojsonRaw) as any;
+	const michiganCountiesGeojson: FeatureCollection = JSON.parse(
+		michiganCountiesGeojsonRaw,
+	) as FeatureCollection;
+</script>
+
+<script lang="ts">
+	import { geoMercator } from 'd3-geo';
+	import { Chart, Layer } from 'layerchart';
+	import { GeoPath } from 'layerchart/geo';
+	import type { CountySummary } from './chart-data.js';
 
 	type Props = {
 		data: CountySummary[];
@@ -11,112 +20,63 @@
 
 	const WIDTH = 760;
 	const HEIGHT = 600;
-	const PADDING = 20;
 
 	let { data, accessibleName }: Props = $props();
 
 	const maxValue = $derived(Math.max(...data.map((entry) => entry.value), 0));
 
-	function projectPoint([lon, lat]: [number, number]): [number, number] {
-		const bounds = calculateBounds();
-		const x =
-			PADDING +
-			((lon - bounds.minLon) / Math.max(bounds.maxLon - bounds.minLon, 1)) *
-				(WIDTH - PADDING * 2);
-		const y =
-			PADDING +
-			((bounds.maxLat - lat) / Math.max(bounds.maxLat - bounds.minLat, 1)) *
-				(HEIGHT - PADDING * 2);
-		return [x, y];
-	}
+	const sortedByValue = $derived([...data].sort((a, b) => b.value - a.value));
+	const topCounties = $derived(new Set(sortedByValue.slice(0, 3).map((entry) => entry.county.toLowerCase())));
+	const bottomCounties = $derived(
+		new Set(sortedByValue.slice(-3).map((entry) => entry.county.toLowerCase())),
+	);
 
-	function calculateBounds() {
-		let minLon = Infinity;
-		let maxLon = -Infinity;
-		let minLat = Infinity;
-		let maxLat = -Infinity;
-
-		for (const feature of (michiganCountiesGeojson as any).features ?? []) {
-			for (const polygon of iterateCoordinates(feature.geometry)) {
-				for (const point of polygon) {
-					const [lon, lat] = point as [number, number];
-					minLon = Math.min(minLon, lon);
-					maxLon = Math.max(maxLon, lon);
-					minLat = Math.min(minLat, lat);
-					maxLat = Math.max(maxLat, lat);
-				}
-			}
-		}
-
-		return { minLon, maxLon, minLat, maxLat };
-	}
-
-	function iterateCoordinates(geometry: any): any[] {
-		if (!geometry) return [];
-		if (geometry.type === 'Polygon') return geometry.coordinates ?? [];
-		if (geometry.type === 'MultiPolygon') return (geometry.coordinates ?? []).flat();
-		return [];
-	}
-
-	function polygonToPath(coordinates: any[]): string {
-		const rings = coordinates.map((ring) => {
-			const points = ring.map((point: any) => {
-				const [x, y] = projectPoint([point[0], point[1]] as [number, number]);
-				return `${x.toFixed(2)},${y.toFixed(2)}`;
-			});
-			return `M ${points.join(' L ')} Z`;
-		});
-		return rings.join(' ');
-	}
-
-	function geometryToPath(geometry: any): string {
-		if (!geometry) return '';
-		if (geometry.type === 'Polygon') return polygonToPath(geometry.coordinates ?? []);
-		if (geometry.type === 'MultiPolygon') {
-			return (geometry.coordinates ?? [])
-				.map((polygon: any[]) => polygonToPath(polygon ?? []))
-				.join(' ');
-		}
-		return '';
-	}
+	const dataByCounty = $derived(new Map(data.map((entry) => [entry.county.toLowerCase(), entry])));
 
 	const counties = $derived(
-		((michiganCountiesGeojson as any).features ?? []).map((feature: any) => {
+		(michiganCountiesGeojson.features ?? []).map((feature) => {
 			const sourceCounty = String(
 				feature.properties?.county ?? feature.properties?.NAME ?? '',
 			).replace(/\s*County\s*$/i, '').trim();
-			const entry = data.find(
-				(item) => item.county.toLowerCase() === sourceCounty.toLowerCase(),
-			);
-			const value = entry?.value ?? 0;
+			const key = sourceCounty.toLowerCase();
+			const entry = dataByCounty.get(key);
+			const highlighted = topCounties.has(key) || bottomCounties.has(key);
 			return {
 				county: sourceCounty,
-				value,
-				d: geometryToPath(feature.geometry),
+				value: entry?.value ?? 0,
+				highlighted,
+				geometry: feature.geometry,
 			};
 		}),
 	);
 
-	function colorForValue(value: number): string {
-		if (maxValue <= 0 || value <= 0) return '#f4f7fb';
+	function colorForValue(value: number, highlighted: boolean): string {
+		if (!highlighted || maxValue <= 0 || value <= 0) return 'var(--color-cream-light)';
 		const mix = value / maxValue;
-		const hue = 220 - mix * 150;
-		const lightness = 95 - mix * 45;
-		return `hsla(${hue}, 78%, ${lightness}%, 0.9)`;
+		return `color-mix(in oklch, var(--color-cream-light), var(--color-navy-mid) ${mix * 100}%)`;
 	}
 </script>
 
 <div class="county-heatmap" role="img" aria-label={accessibleName}>
-	<svg class="county-heatmap__svg" viewBox="0 0 760 600" preserveAspectRatio="xMidYMid meet">
-		{#each counties as county (county.county)}
-			<path
-				d={county.d}
-				fill={colorForValue(county.value)}
-				stroke="rgba(15, 23, 42, 0.7)"
-				stroke-width="0.7"
-			/>
-		{/each}
-	</svg>
+	<div class="county-heatmap__svg">
+		<Chart
+			geo={{ projection: geoMercator, fitGeojson: michiganCountiesGeojson }}
+			width={WIDTH}
+			height={HEIGHT}
+		>
+			<Layer type="svg" viewBox="0 0 {WIDTH} {HEIGHT}">
+				{#each counties as county (county.county)}
+					<GeoPath
+						geojson={county.geometry}
+						fill={colorForValue(county.value, county.highlighted)}
+						stroke="var(--color-text)"
+						stroke-width="0.7"
+						stroke-opacity="0.35"
+					/>
+				{/each}
+			</Layer>
+		</Chart>
+	</div>
 	<div class="county-heatmap__legend" aria-hidden="true">
 		<span>Low</span>
 		<div class="county-heatmap__legend-bar"></div>
@@ -136,7 +96,7 @@
 		height: 360px;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
-		background: linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%);
+		background: var(--color-surface);
 	}
 	.county-heatmap__legend {
 		display: inline-flex;
@@ -149,6 +109,10 @@
 		width: 120px;
 		height: 10px;
 		border-radius: 999px;
-		background: linear-gradient(90deg, #f4f7fb 0%, #8ab7ff 50%, #0b4aa2 100%);
+		background: linear-gradient(
+			90deg,
+			var(--color-cream-light) 0%,
+			var(--color-navy-mid) 100%
+		);
 	}
 </style>
