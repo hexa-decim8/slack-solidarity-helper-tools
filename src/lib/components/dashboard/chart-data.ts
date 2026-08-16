@@ -16,10 +16,16 @@ export interface ChartBand {
 	}>;
 }
 
+export interface CountySummary {
+	county: string;
+	value: number;
+}
+
 export interface ChartFrame {
 	dates: string[];
 	bands: ChartBand[];
 	dailyTotals?: number[];
+	countySummary?: CountySummary[];
 }
 
 /** Max x-axis tick labels on the signup charts. A band scale renders one
@@ -56,6 +62,30 @@ function contiguousDates(input: DaySignups[]): string[] {
 		cursor = addDays(cursor, 1);
 	}
 	return dates;
+}
+
+export function normalizeCountyName(name: string | null | undefined): string {
+	if (!name) return 'Unassigned';
+	const cleaned = name
+		.trim()
+		.replace(/\s*\bcounty\b\s*$/i, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+	return cleaned === '' ? 'Unassigned' : cleaned;
+}
+
+export function buildCountySummary(days: DaySignups[]): CountySummary[] {
+	const totals = new Map<string, number>();
+	for (const day of days) {
+		for (const chapter of day.byChapter) {
+			const county = normalizeCountyName(chapter.chapterName);
+			const next = (totals.get(county) ?? 0) + chapter.count;
+			totals.set(county, next);
+		}
+	}
+	return [...totals.entries()]
+		.map(([county, value]) => ({ county, value }))
+		.sort((a, b) => b.value - a.value || a.county.localeCompare(b.county));
 }
 
 export function buildOverviewFrame(days: DaySignups[], sourceLabel: string): ChartFrame {
