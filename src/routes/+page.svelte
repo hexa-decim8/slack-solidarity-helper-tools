@@ -20,6 +20,8 @@
 
 	let { data }: { data: PageData } = $props();
 
+	const countyByChapterName = $derived(new Map(data.countyByChapterName));
+
 	type ChartMode = 'overview' | 'detail' | 'county';
 	type CardState =
 		| { kind: 'empty' }
@@ -43,7 +45,7 @@
 	): CardState {
 		if (!source.ok) return { kind: 'error', message: source.error };
 		if (mode === 'county') {
-			const countySummary = buildCountySummary(source.days);
+			const countySummary = buildCountySummary(source.days, countyByChapterName);
 			if (countySummary.length === 0) return { kind: 'empty' };
 			return {
 				kind: 'ready',

@@ -74,11 +74,24 @@ export function normalizeCountyName(name: string | null | undefined): string {
 	return cleaned === '' ? 'Unassigned' : cleaned;
 }
 
-export function buildCountySummary(days: DaySignups[]): CountySummary[] {
+/**
+ * @param countyByChapterName Chapter name (lowercased) -> real Michigan
+ *   county, derived from member zip codes (see chapter-county.ts). Preferred
+ *   over the chapter-name heuristic below when available; chapters missing
+ *   from this map (no mapped zips yet, e.g. brand-new chapters) fall back to
+ *   normalizeCountyName so they still land somewhere sane.
+ */
+export function buildCountySummary(
+	days: DaySignups[],
+	countyByChapterName?: ReadonlyMap<string, string>,
+): CountySummary[] {
 	const totals = new Map<string, number>();
 	for (const day of days) {
 		for (const chapter of day.byChapter) {
-			const county = normalizeCountyName(chapter.chapterName);
+			const mapped = chapter.chapterName
+				? countyByChapterName?.get(chapter.chapterName.toLowerCase())
+				: undefined;
+			const county = mapped ?? normalizeCountyName(chapter.chapterName);
 			const next = (totals.get(county) ?? 0) + chapter.count;
 			totals.set(county, next);
 		}
